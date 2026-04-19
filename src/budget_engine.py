@@ -20,6 +20,7 @@ REQUIRED_COLUMNS = {
 }
 
 ALLOCATION_METHODS = {"monthly_average", "quarterly", "particular_month"}
+EXPENSE_UPLOAD_REQUIRED = {"code", "expense_item", "cashflow_item"}
 
 
 @dataclass
@@ -38,34 +39,11 @@ class BudgetWorkbook:
         self.expenses = pd.concat([remainder, updated_company], ignore_index=True)
 
     def upload_expense_assumptions(self, assumptions_df: pd.DataFrame) -> None:
-        required = {"code", "expense_item", "cashflow_item", "scenario", "annual_cost", "allocation_method"}
-        assumptions = assumptions_df.copy()
-        assumptions.columns = [str(c).strip().lower() for c in assumptions.columns]
-        missing = required.difference(assumptions.columns)
-        if missing:
-            missing_str = ", ".join(sorted(missing))
-            raise ValueError(f"Expense upload is missing required columns: {missing_str}")
-
-        if "year" not in assumptions.columns:
-            assumptions["year"] = pd.Timestamp.today().year
-        if "allocation_month" not in assumptions.columns:
-            assumptions["allocation_month"] = 1
-
-        scenarios = assumptions["scenario"].astype(str).str.strip().unique().tolist()
-        if not scenarios:
-            raise ValueError("Expense upload must contain at least one scenario.")
-
         companies = sorted(self.expenses["company"].dropna().astype(str).str.strip().unique().tolist())
         if not companies:
             raise ValueError("No subsidiaries/companies found in current workbook.")
 
-        expanded_rows: list[dict] = []
-        for company in companies:
-            company_rows = assumptions.copy()
-            company_rows["company"] = company
-            expanded_rows.extend(_expand_annual_rows(company_rows).to_dict("records"))
-
-        uploaded = _normalize_expenses(pd.DataFrame(expanded_rows))
+        uploaded = allocate_expenses_to_companies(assumptions_df=assumptions_df, companies=companies)
         self.expenses = pd.concat([self.expenses, uploaded], ignore_index=True).sort_values(
             ["company", "scenario", "month", "code", "expense_item"]
         )
@@ -202,6 +180,41 @@ def _normalize_expenses(raw: pd.DataFrame) -> pd.DataFrame:
         expanded[text_col] = expanded[text_col].astype(str).str.strip()
 
     return expanded.sort_values(["company", "scenario", "month", "code", "expense_item"]).reset_index(drop=True)
+
+
+def allocate_expenses_to_companies(assumptions_df: pd.DataFrame, companies: list[str]) -> pd.DataFrame:
+    assumptions = assumptions_df.copy()
+    assumptions.columns = [str(c).strip().lower() for c in assumptions.columns]
+    missing = EXPENSE_UPLOAD_REQUIRED.difference(assumptions.columns)
+    if missing:
+        missing_str = ", ".join(sorted(missing))
+        raise ValueError(f"Expense upload is missing required columns: {missing_str}")
+
+    assumptions["code"] = assumptions["code"].astype(str).str.strip()
+    assumptions["expense_item"] = assumptions["expense_item"].astype(str).str.strip()
+    assumptions["cashflow_item"] = assumptions["cashflow_item"].astype(str).str.strip()
+    assumptions = assumptions[(assumptions["code"] != "") & (assumptions["expense_item"] != "")]
+    if assumptions.empty:
+        raise ValueError("Expense upload does not contain any valid rows.")
+
+    if "scenario" not in assumptions.columns:
+        assumptions["scenario"] = "Base"
+    if "annual_cost" not in assumptions.columns:
+        assumptions["annual_cost"] = 0.0
+    if "allocation_method" not in assumptions.columns:
+        assumptions["allocation_method"] = "monthly_average"
+    if "year" not in assumptions.columns:
+        assumptions["year"] = pd.Timestamp.today().year
+    if "allocation_month" not in assumptions.columns:
+        assumptions["allocation_month"] = 1
+
+    expanded_rows: list[dict] = []
+    for company in companies:
+        company_rows = assumptions.copy()
+        company_rows["company"] = company
+        expanded_rows.extend(_expand_annual_rows(company_rows).to_dict("records"))
+
+    return _normalize_expenses(pd.DataFrame(expanded_rows))
 
 
 def _expand_annual_rows(df: pd.DataFrame) -> pd.DataFrame:

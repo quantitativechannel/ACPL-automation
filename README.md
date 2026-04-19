@@ -5,15 +5,13 @@ This repository contains a Streamlit app and budgeting engine for ACPL budgeting
 ## What it does
 
 - Uploads and maintains legacy `Expenses` workbooks.
-- Supports subsidiary-specific monthly input via manual grid edits and spreadsheet upload.
-- Generates annual projections where:
-  - monthly values stay flat within a year
-  - growth is applied only when moving to the next year
-- Supports expense assumption uploads (`code`, `expense_item`, `cashflow_item`) and auto-populates them across subsidiaries.
-- Allocates annual costs by method:
+- Supports subsidiary-specific annual expense assumptions via manual grid edits and spreadsheet upload.
+- Auto-allocates annual costs into monthly values using configurable methods:
   - `monthly_average`
   - `quarterly`
   - `particular_month`
+- Supports expense assumption uploads (`code`, `expense_item`, `cashflow_item`) and auto-populates them across subsidiaries.
+- Adds a `People` tab to upload people assumptions with columns `person`, `location`, and `base_salary`.
 - Builds:
   - company-level expense summary
   - consolidated summary across companies
@@ -35,9 +33,16 @@ This repository contains a Streamlit app and budgeting engine for ACPL budgeting
 
 ### Subsidiary projection upload
 
-- `item`
-- `monthly_budget`
-- `monthly_expense`
+- `code`
+- `expense_item`
+- `cashflow_item`
+- optional: `scenario`, `year`, `annual_cost`, `allocation_method`, `allocation_month`
+
+### People upload
+
+- `person`
+- `location`
+- `base_salary`
 
 ### Legacy `Expenses` sheet
 

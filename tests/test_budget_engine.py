@@ -4,6 +4,7 @@ import pandas as pd
 
 from src.budget_engine import (
     BudgetWorkbook,
+    allocate_expenses_to_companies,
     default_template,
     export_dashboard_workbook,
     generate_annual_projection,
@@ -64,6 +65,26 @@ def test_export_creates_expected_tabs() -> None:
     assert "Company Summary" in sheets
     assert "Consolidated" in sheets
     assert "Cash Flow" in sheets
+
+
+def test_allocate_expenses_to_companies_defaults_and_spread() -> None:
+    assumptions = pd.DataFrame(
+        [
+            {
+                "code": "IT-001",
+                "expense_item": "Software License",
+                "cashflow_item": "Operating Expense",
+                "annual_cost": 1200,
+            }
+        ]
+    )
+    result = allocate_expenses_to_companies(assumptions_df=assumptions, companies=["ACPL", "ACPLHK"])
+
+    assert sorted(result["company"].unique().tolist()) == ["ACPL", "ACPLHK"]
+    assert len(result) == 24
+    assert result["scenario"].nunique() == 1
+    assert result["scenario"].iloc[0] == "Base"
+    assert result.groupby("company")["expense"].sum().round(2).tolist() == [1200.0, 1200.0]
 
 
 def test_generate_annual_projection_grows_only_year_over_year() -> None:

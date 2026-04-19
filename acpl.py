@@ -5,7 +5,12 @@ from io import BytesIO
 import pandas as pd
 import streamlit as st
 
-from src.budget_engine import BudgetWorkbook, default_template, export_dashboard_workbook, generate_annual_projection
+from src.budget_engine import (
+    BudgetWorkbook,
+    allocate_expenses_to_companies,
+    default_template,
+    export_dashboard_workbook,
+)
 
 st.set_page_config(page_title="ACPL Budget Automation", layout="wide")
 st.title("ACPL Budgeting Portal")
@@ -13,8 +18,8 @@ st.caption("Configure subsidiary inputs, run projections, and export consolidate
 
 if "subsidiary_base_inputs" not in st.session_state:
     st.session_state.subsidiary_base_inputs = {}
-if "subsidiary_projections" not in st.session_state:
-    st.session_state.subsidiary_projections = {}
+if "people_data" not in st.session_state:
+    st.session_state.people_data = pd.DataFrame(columns=["person", "location", "base_salary"])
 
 with st.sidebar:
     st.header("Configuration")
@@ -30,10 +35,12 @@ with st.sidebar:
     )
 
 
-tab_subs, tab_master, tab_legacy = st.tabs(["Subsidiaries", "Master Consolidation", "Legacy Workbook"])
+tab_subs, tab_master, tab_people, tab_legacy = st.tabs(
+    ["Subsidiaries", "Master Consolidation", "People", "Legacy Workbook"]
+)
 
 with tab_subs:
-    st.subheader("Subsidiary Budget Input + Annual Projection")
+    st.subheader("Subsidiary Expense Assumptions (Annual)")
     default_subs = ["ACPL", "ACPLHK", "ACPSZL", "ACPLSZ", "ACPLGZ", "Yixing"]
     subsidiaries_input = st.text_area("Subsidiary list (comma-separated)", value=", ".join(default_subs))
     subsidiaries = [s.strip() for s in subsidiaries_input.split(",") if s.strip()]
@@ -46,74 +53,119 @@ with tab_subs:
         if base_grid is None:
             base_grid = pd.DataFrame(
                 {
-                    "item": ["Rent", "Utilities", "Travel"],
-                    "monthly_budget": [0.0, 0.0, 0.0],
-                    "monthly_expense": [0.0, 0.0, 0.0],
+                    "code": ["OPS-RENT", "OPS-UTIL", "OPS-TRAVEL"],
+                    "expense_item": ["Rent", "Utilities", "Travel"],
+                    "cashflow_item": ["Operating Expense", "Operating Expense", "Operating Expense"],
+                    "scenario": ["Base", "Base", "Base"],
+                    "year": [2026, 2026, 2026],
+                    "annual_cost": [0.0, 0.0, 0.0],
+                    "allocation_method": ["monthly_average", "monthly_average", "quarterly"],
+                    "allocation_month": [1, 1, 1],
                 }
             )
 
         sub_upload = st.file_uploader(
             f"Upload {selected_sub} expense input",
             type=["xlsx", "csv"],
-            help="Columns expected: item, monthly_budget, monthly_expense",
+            help=(
+                "Columns expected: code, expense_item, cashflow_item. "
+                "Optional: scenario, year, annual_cost, allocation_method, allocation_month"
+            ),
             key=f"upload_{selected_sub}",
         )
         if sub_upload is not None:
             uploaded_sub = pd.read_excel(sub_upload) if sub_upload.name.endswith("xlsx") else pd.read_csv(sub_upload)
             uploaded_sub.columns = [str(c).strip().lower() for c in uploaded_sub.columns]
-            required = {"item", "monthly_budget", "monthly_expense"}
+            required = {"code", "expense_item", "cashflow_item"}
             if required.issubset(uploaded_sub.columns):
-                uploaded_sub = uploaded_sub[["item", "monthly_budget", "monthly_expense"]].copy()
                 base_grid = (
                     pd.concat([base_grid, uploaded_sub], ignore_index=True)
-                    .drop_duplicates(subset=["item"], keep="last")
+                    .drop_duplicates(subset=["code", "expense_item"], keep="last")
                     .reset_index(drop=True)
                 )
                 st.success(f"Imported expense inputs for {selected_sub}.")
             else:
-                st.error("Subsidiary upload must include: item, monthly_budget, monthly_expense")
+                st.error("Subsidiary upload must include: code, expense_item, cashflow_item")
 
         edited_base_grid = st.data_editor(base_grid, hide_index=True, num_rows="dynamic", use_container_width=True)
         st.session_state.subsidiary_base_inputs[selected_sub] = edited_base_grid
 
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            base_year = st.number_input("Budget base year", min_value=2000, max_value=2100, value=2026, step=1)
-        with c2:
-            end_year = st.number_input("Projection end year", min_value=2000, max_value=2100, value=2029, step=1)
-        with c3:
-            growth_pct = st.number_input("Annual growth %", value=5.0, step=0.5)
+        if st.button(f"Allocate annual costs for {selected_sub}"):
+            allocated = allocate_expenses_to_companies(edited_base_grid, [selected_sub])
+            st.session_state.subsidiary_base_inputs[f"{selected_sub}__allocated"] = allocated
+            st.success(f"Allocated annual costs to months for {selected_sub}.")
 
-        if st.button(f"Generate projection for {selected_sub}"):
-            projection = generate_annual_projection(
-                base_inputs=edited_base_grid,
-                company=selected_sub,
-                base_year=int(base_year),
-                end_year=int(end_year),
-                growth_rate_pct=float(growth_pct),
-                scenario="Budget",
+        sub_allocation = st.session_state.subsidiary_base_inputs.get(f"{selected_sub}__allocated")
+        if sub_allocation is not None and not sub_allocation.empty:
+            st.dataframe(sub_allocation, use_container_width=True)
+
+        st.markdown("#### Upload one expense file and auto-populate across all subsidiaries")
+        common_upload = st.file_uploader(
+            "Upload shared expense assumptions",
+            type=["xlsx", "csv"],
+            help=(
+                "Required: code, expense_item, cashflow_item. "
+                "Optional: scenario, year, annual_cost, allocation_method, allocation_month."
+            ),
+            key="common_expense_upload",
+        )
+        if common_upload is not None:
+            uploaded_common = (
+                pd.read_excel(common_upload) if common_upload.name.endswith("xlsx") else pd.read_csv(common_upload)
             )
-            st.session_state.subsidiary_projections[selected_sub] = projection
-            st.success(f"Projection generated for {selected_sub}.")
-
-        sub_projection = st.session_state.subsidiary_projections.get(selected_sub)
-        if sub_projection is not None and not sub_projection.empty:
-            st.dataframe(sub_projection, use_container_width=True)
+            if st.button("Apply shared expense upload to all subsidiaries"):
+                try:
+                    shared_allocated = allocate_expenses_to_companies(uploaded_common, subsidiaries)
+                    for sub in subsidiaries:
+                        sub_rows = shared_allocated[shared_allocated["company"] == sub].copy()
+                        st.session_state.subsidiary_base_inputs[f"{sub}__allocated"] = sub_rows
+                    st.success("Shared expense assumptions applied to all subsidiaries.")
+                except ValueError as exc:
+                    st.error(str(exc))
 
 with tab_master:
     st.subheader("Master Consolidation")
-    projection_frames = [df for df in st.session_state.subsidiary_projections.values() if not df.empty]
+    projection_frames = [
+        df
+        for key, df in st.session_state.subsidiary_base_inputs.items()
+        if key.endswith("__allocated") and isinstance(df, pd.DataFrame) and not df.empty
+    ]
     if not projection_frames:
-        st.info("Generate at least one subsidiary projection to see consolidation.")
+        st.info("Allocate expenses for at least one subsidiary to see consolidation.")
     else:
         master_df = pd.concat(projection_frames, ignore_index=True)
         consolidated = (
-            master_df.groupby(["month", "item"], as_index=False)
-            .agg(total_budget=("budget", "sum"), total_expense=("expense", "sum"))
-            .sort_values(["month", "item"])
+            master_df.groupby(["month", "cashflow_item"], as_index=False)
+            .agg(total_expense=("expense", "sum"))
+            .sort_values(["month", "cashflow_item"])
         )
-        consolidated["variance"] = consolidated["total_budget"] - consolidated["total_expense"]
         st.dataframe(consolidated, use_container_width=True)
+
+with tab_people:
+    st.subheader("People Upload")
+    people_upload = st.file_uploader(
+        "Upload people file",
+        type=["xlsx", "csv"],
+        help="Columns expected: person, location, base_salary",
+        key="people_upload",
+    )
+    if people_upload is not None:
+        people_df = pd.read_excel(people_upload) if people_upload.name.endswith("xlsx") else pd.read_csv(people_upload)
+        people_df.columns = [str(c).strip().lower() for c in people_df.columns]
+        required = {"person", "location", "base_salary"}
+        if required.issubset(people_df.columns):
+            people_df = people_df[["person", "location", "base_salary"]].copy()
+            people_df["base_salary"] = pd.to_numeric(people_df["base_salary"], errors="coerce").fillna(0.0)
+            st.session_state.people_data = people_df
+            st.success("People data uploaded.")
+        else:
+            st.error("People upload must include: person, location, base_salary")
+
+    edited_people = st.data_editor(
+        st.session_state.people_data, hide_index=True, num_rows="dynamic", use_container_width=True
+    )
+    st.session_state.people_data = edited_people
+    st.caption("People table stores person, location, and base salary assumptions.")
 
 with tab_legacy:
     st.subheader("Legacy workbook flow")
