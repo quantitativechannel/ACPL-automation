@@ -7,7 +7,7 @@ from src.budget_engine import (
     allocate_expenses_to_companies,
     default_template,
     export_dashboard_workbook,
-    generate_annual_projection,
+    generate_forecast_table,
 )
 
 
@@ -48,7 +48,6 @@ def test_expense_upload_auto_populates_subsidiaries() -> None:
     existing_count = len(workbook.expenses)
     workbook.upload_expense_assumptions(assumptions)
 
-    # 12 months generated for each company in the workbook template (2 companies)
     assert len(workbook.expenses) == existing_count + 24
 
 
@@ -87,27 +86,64 @@ def test_allocate_expenses_to_companies_defaults_and_spread() -> None:
     assert result.groupby("company")["expense"].sum().round(2).tolist() == [1200.0, 1200.0]
 
 
-def test_generate_annual_projection_grows_only_year_over_year() -> None:
-    base_inputs = pd.DataFrame(
+def test_allocate_supports_quarterly_end_and_specific_month() -> None:
+    assumptions = pd.DataFrame(
         [
-            {"item": "Rent", "monthly_budget": 1000, "monthly_expense": 900},
-            {"item": "Utilities", "monthly_budget": 200, "monthly_expense": 150},
+            {
+                "code": "OPS-100",
+                "expense_item": "Compliance",
+                "cashflow_item": "Operating Expense",
+                "annual_cost": 1200,
+                "allocation_method": "quarterly_end",
+                "year": 2026,
+            },
+            {
+                "code": "OPS-200",
+                "expense_item": "Insurance",
+                "cashflow_item": "Operating Expense",
+                "annual_cost": 600,
+                "allocation_method": "specific_month",
+                "allocation_month": 5,
+                "year": 2026,
+            },
         ]
     )
-    projection = generate_annual_projection(
-        base_inputs=base_inputs,
+    result = allocate_expenses_to_companies(assumptions_df=assumptions, companies=["ACPL"])
+
+    q_end = result[result["code"] == "OPS-100"].set_index(result[result["code"] == "OPS-100"]["month"].dt.month)["expense"]
+    assert q_end.loc[3] == 300
+    assert q_end.loc[6] == 300
+    assert q_end.loc[9] == 300
+    assert q_end.loc[12] == 300
+
+    specific = result[result["code"] == "OPS-200"].set_index(result[result["code"] == "OPS-200"]["month"].dt.month)["expense"]
+    assert specific.loc[5] == 600
+    assert specific.sum() == 600
+
+
+def test_generate_forecast_table_creates_month_columns() -> None:
+    assumptions = pd.DataFrame(
+        [
+            {
+                "code": "OPS-RENT",
+                "expense_item": "Rent",
+                "cashflow_item": "Operating Expense",
+                "annual_cost": 12000,
+                "allocation_method": "monthly_average",
+                "allocation_month": 1,
+            }
+        ]
+    )
+    forecast = generate_forecast_table(
+        assumptions_df=assumptions,
         company="ACPL",
-        base_year=2026,
         end_year=2027,
-        growth_rate_pct=10.0,
-        scenario="Budget",
+        annual_growth_pct=10.0,
+        start_year=2026,
     )
 
-    assert len(projection) == 48
-
-    rent_2026 = projection[(projection["item"] == "Rent") & (projection["month"].dt.year == 2026)]
-    rent_2027 = projection[(projection["item"] == "Rent") & (projection["month"].dt.year == 2027)]
-    assert rent_2026["budget"].nunique() == 1
-    assert rent_2027["budget"].nunique() == 1
-    assert rent_2026["budget"].iloc[0] == 1000
-    assert rent_2027["budget"].iloc[0] == 1100
+    assert "2026-01" in forecast.columns
+    assert "2027-12" in forecast.columns
+    row = forecast.iloc[0]
+    assert row["2026-01"] == 1000
+    assert round(row["2027-01"], 2) == 1100

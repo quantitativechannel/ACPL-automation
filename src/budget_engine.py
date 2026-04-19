@@ -19,7 +19,14 @@ REQUIRED_COLUMNS = {
     "expense",
 }
 
-ALLOCATION_METHODS = {"monthly_average", "quarterly", "particular_month"}
+ALLOCATION_METHODS = {
+    "monthly_average",
+    "quarterly",
+    "quarterly_start",
+    "quarterly_end",
+    "specific_month",
+    "particular_month",
+}
 EXPENSE_UPLOAD_REQUIRED = {"code", "expense_item", "cashflow_item"}
 
 
@@ -91,51 +98,76 @@ class BudgetWorkbook:
         return reports
 
 
-def generate_annual_projection(
-    base_inputs: pd.DataFrame,
+def generate_forecast_table(
+    assumptions_df: pd.DataFrame,
     company: str,
-    base_year: int,
     end_year: int,
-    growth_rate_pct: float,
-    scenario: str,
+    annual_growth_pct: float,
+    start_year: int | None = None,
 ) -> pd.DataFrame:
-    if end_year < base_year:
-        raise ValueError("end_year must be greater than or equal to base_year")
+    start_year = start_year or pd.Timestamp.today().year
+    if end_year < start_year:
+        raise ValueError("end_year must be greater than or equal to start_year")
 
-    normalized = base_inputs.copy()
-    normalized.columns = [str(c).strip().lower() for c in normalized.columns]
-    required = {"item", "monthly_budget", "monthly_expense"}
-    missing = required.difference(normalized.columns)
+    base = assumptions_df.copy()
+    base.columns = [str(c).strip().lower() for c in base.columns]
+
+    missing = EXPENSE_UPLOAD_REQUIRED.difference(base.columns)
     if missing:
         missing_str = ", ".join(sorted(missing))
-        raise ValueError(f"Projection input is missing required columns: {missing_str}")
+        raise ValueError(f"Forecast source is missing required columns: {missing_str}")
 
-    normalized["item"] = normalized["item"].astype(str).str.strip()
-    normalized["monthly_budget"] = pd.to_numeric(normalized["monthly_budget"], errors="coerce").fillna(0.0)
-    normalized["monthly_expense"] = pd.to_numeric(normalized["monthly_expense"], errors="coerce").fillna(0.0)
+    if "annual_cost" not in base.columns:
+        base["annual_cost"] = 0.0
+    if "allocation_method" not in base.columns:
+        base["allocation_method"] = "monthly_average"
+    if "allocation_month" not in base.columns:
+        base["allocation_month"] = 1
 
-    growth_factor = 1 + (growth_rate_pct / 100.0)
-    rows: list[dict] = []
+    base["annual_cost"] = pd.to_numeric(base["annual_cost"], errors="coerce").fillna(0.0)
+    growth_factor = 1 + (annual_growth_pct / 100.0)
 
-    for year in range(base_year, end_year + 1):
-        year_multiplier = growth_factor ** (year - base_year)
-        for _, row in normalized.iterrows():
-            year_budget = float(row["monthly_budget"]) * year_multiplier
-            year_expense = float(row["monthly_expense"]) * year_multiplier
-            for month in range(1, 13):
-                rows.append(
-                    {
-                        "company": company,
-                        "scenario": scenario,
-                        "item": row["item"],
-                        "month": pd.Timestamp(year=year, month=month, day=1),
-                        "budget": year_budget,
-                        "expense": year_expense,
-                    }
-                )
+    long_rows: list[dict] = []
+    for year in range(start_year, end_year + 1):
+        year_multiplier = growth_factor ** (year - start_year)
+        yearly = base.copy()
+        yearly["company"] = company
+        yearly["scenario"] = "Forecast"
+        yearly["year"] = year
+        yearly["annual_cost"] = yearly["annual_cost"] * year_multiplier
+        allocated = _expand_annual_rows(yearly)
+        long_rows.extend(allocated.to_dict("records"))
 
-    projection = pd.DataFrame(rows)
-    return projection.sort_values(["company", "scenario", "item", "month"]).reset_index(drop=True)
+    long_df = pd.DataFrame(long_rows)
+    if long_df.empty:
+        return pd.DataFrame()
+
+    long_df["month_label"] = pd.to_datetime(long_df["month"]).dt.strftime("%Y-%m")
+    detail_cols = ["company", "code", "expense_item", "cashflow_item", "allocation_method", "allocation_month"]
+    wide = (
+        long_df.pivot_table(index=detail_cols, columns="month_label", values="expense", aggfunc="sum", fill_value=0.0)
+        .reset_index()
+        .sort_values(["code", "expense_item"])
+    )
+    annual_lookup = (
+        base[["code", "expense_item", "annual_cost"]]
+        .drop_duplicates(subset=["code", "expense_item"], keep="last")
+        .rename(columns={"annual_cost": "annual_cost_assumption"})
+    )
+    wide = wide.merge(annual_lookup, on=["code", "expense_item"], how="left")
+    ordered = [
+        "company",
+        "code",
+        "expense_item",
+        "cashflow_item",
+        "annual_cost_assumption",
+        "allocation_method",
+        "allocation_month",
+    ]
+    month_cols = [c for c in wide.columns if c not in ordered]
+    wide = wide[ordered + month_cols]
+    wide.columns.name = None
+    return wide
 
 
 def _normalize_expenses(raw: pd.DataFrame) -> pd.DataFrame:
@@ -151,7 +183,7 @@ def _normalize_expenses(raw: pd.DataFrame) -> pd.DataFrame:
     if "annual_cost" not in df.columns and "expense" in df.columns:
         df["annual_cost"] = pd.to_numeric(df["expense"], errors="coerce").fillna(0.0)
     if "allocation_method" not in df.columns:
-        df["allocation_method"] = "particular_month"
+        df["allocation_method"] = "specific_month"
     if "allocation_month" not in df.columns:
         month_source = pd.to_datetime(df.get("month"), errors="coerce")
         df["allocation_month"] = month_source.dt.month.fillna(1).astype(int)
@@ -228,7 +260,11 @@ def _expand_annual_rows(df: pd.DataFrame) -> pd.DataFrame:
 
         annual = float(pd.to_numeric(row["annual_cost"], errors="coerce") or 0.0)
         year = int(pd.to_numeric(row.get("year", pd.Timestamp.today().year), errors="coerce") or pd.Timestamp.today().year)
-        alloc_month = int(pd.to_numeric(row.get("allocation_month", 1), errors="coerce") or 1)
+        alloc_month_val = pd.to_numeric(row.get("allocation_month", 1), errors="coerce")
+        if pd.isna(alloc_month_val):
+            alloc_month_val = 1
+        alloc_month = int(alloc_month_val)
+        alloc_month = min(max(1, alloc_month), 12)
 
         months = pd.date_range(f"{year}-01-01", periods=12, freq="MS")
         expense_by_month = {m: 0.0 for m in months}
@@ -237,8 +273,14 @@ def _expand_annual_rows(df: pd.DataFrame) -> pd.DataFrame:
             monthly_value = annual / 12.0
             for m in months:
                 expense_by_month[m] = monthly_value
-        elif method == "quarterly":
+        elif method in {"quarterly", "quarterly_start"}:
             quarter_months = [1, 4, 7, 10]
+            quarterly_value = annual / 4.0
+            for m in months:
+                if m.month in quarter_months:
+                    expense_by_month[m] = quarterly_value
+        elif method == "quarterly_end":
+            quarter_months = [3, 6, 9, 12]
             quarterly_value = annual / 4.0
             for m in months:
                 if m.month in quarter_months:
@@ -312,13 +354,16 @@ def default_template() -> bytes:
                 "scenario": "Conservative",
                 "year": 2026,
                 "annual_cost": 12000,
-                "allocation_method": "quarterly",
+                "allocation_method": "quarterly_end",
                 "allocation_month": 1,
             },
         ]
     )
     normalized = _normalize_expenses(template)
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
         normalized.to_excel(writer, sheet_name="Expenses", index=False)
-    return output.getvalue()
+
+    buffer.seek(0)
+    return buffer.getvalue()
