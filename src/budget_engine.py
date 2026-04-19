@@ -91,13 +91,18 @@ class BudgetWorkbook:
 
     def cash_flow(self, scenarios: list[str], opening_cash: float = 0.0) -> pd.DataFrame:
         consolidated = self.consolidated_summary(scenarios)
+        frames: list[pd.DataFrame] = []
 
-        def add_running_balance(frame: pd.DataFrame) -> pd.DataFrame:
-            frame = frame.sort_values("month").copy()
-            frame["closing_cash"] = opening_cash + frame["net_flow"].cumsum()
-            return frame
+        for scenario, frame in consolidated.groupby("scenario"):
+            ordered = frame.sort_values("month").copy()
+            ordered["scenario"] = scenario
+            ordered["closing_cash"] = opening_cash + ordered["net_flow"].cumsum()
+            frames.append(ordered)
 
-        return consolidated.groupby("scenario", group_keys=False).apply(add_running_balance).reset_index(drop=True)
+        if not frames:
+            return consolidated.assign(closing_cash=pd.Series(dtype=float))
+
+        return pd.concat(frames, ignore_index=True)
 
     def scenario_reports(self, scenarios: list[str], opening_cash: float = 0.0) -> dict[str, pd.DataFrame]:
         cash = self.cash_flow(scenarios, opening_cash)
@@ -106,6 +111,53 @@ class BudgetWorkbook:
             scenario_cash = cash[cash["scenario"] == scenario]
             reports[scenario] = scenario_cash[["month", "expense", "net_flow", "closing_cash"]].copy()
         return reports
+
+
+def generate_annual_projection(
+    base_inputs: pd.DataFrame,
+    company: str,
+    base_year: int,
+    end_year: int,
+    growth_rate_pct: float,
+    scenario: str,
+) -> pd.DataFrame:
+    if end_year < base_year:
+        raise ValueError("end_year must be greater than or equal to base_year")
+
+    normalized = base_inputs.copy()
+    normalized.columns = [str(c).strip().lower() for c in normalized.columns]
+    required = {"item", "monthly_budget", "monthly_expense"}
+    missing = required.difference(normalized.columns)
+    if missing:
+        missing_str = ", ".join(sorted(missing))
+        raise ValueError(f"Projection input is missing required columns: {missing_str}")
+
+    normalized["item"] = normalized["item"].astype(str).str.strip()
+    normalized["monthly_budget"] = pd.to_numeric(normalized["monthly_budget"], errors="coerce").fillna(0.0)
+    normalized["monthly_expense"] = pd.to_numeric(normalized["monthly_expense"], errors="coerce").fillna(0.0)
+
+    growth_factor = 1 + (growth_rate_pct / 100.0)
+    rows: list[dict] = []
+
+    for year in range(base_year, end_year + 1):
+        year_multiplier = growth_factor ** (year - base_year)
+        for _, row in normalized.iterrows():
+            year_budget = float(row["monthly_budget"]) * year_multiplier
+            year_expense = float(row["monthly_expense"]) * year_multiplier
+            for month in range(1, 13):
+                rows.append(
+                    {
+                        "company": company,
+                        "scenario": scenario,
+                        "item": row["item"],
+                        "month": pd.Timestamp(year=year, month=month, day=1),
+                        "budget": year_budget,
+                        "expense": year_expense,
+                    }
+                )
+
+    projection = pd.DataFrame(rows)
+    return projection.sort_values(["company", "scenario", "item", "month"]).reset_index(drop=True)
 
 
 def _normalize_expenses(raw: pd.DataFrame) -> pd.DataFrame:
@@ -257,53 +309,3 @@ def default_template() -> bytes:
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         normalized.to_excel(writer, sheet_name="Expenses", index=False)
     return output.getvalue()
-
-
-def generate_annual_projection(
-    base_inputs: pd.DataFrame,
-    company: str,
-    base_year: int,
-    end_year: int,
-    growth_rate_pct: float,
-    scenario: str = "Base",
-) -> pd.DataFrame:
-    required_columns = {"item", "monthly_budget", "monthly_expense"}
-    missing = required_columns.difference(base_inputs.columns)
-    if missing:
-        missing_str = ", ".join(sorted(missing))
-        raise ValueError(f"Projection input is missing required columns: {missing_str}")
-
-    if end_year < base_year:
-        raise ValueError("Projection end year must be greater than or equal to base year.")
-
-    normalized = base_inputs.copy()
-    normalized["item"] = normalized["item"].astype(str).str.strip()
-    normalized["monthly_budget"] = pd.to_numeric(normalized["monthly_budget"], errors="coerce").fillna(0.0)
-    normalized["monthly_expense"] = pd.to_numeric(normalized["monthly_expense"], errors="coerce").fillna(0.0)
-    normalized = normalized[normalized["item"] != ""].drop_duplicates(subset=["item"]).reset_index(drop=True)
-
-    growth_multiplier = 1 + (growth_rate_pct / 100.0)
-    records: list[dict[str, object]] = []
-
-    for _, row in normalized.iterrows():
-        for year in range(base_year, end_year + 1):
-            years_from_base = year - base_year
-            multiplier = growth_multiplier**years_from_base
-            budget_for_year = float(row["monthly_budget"]) * multiplier
-            expense_for_year = float(row["monthly_expense"]) * multiplier
-
-            for month in range(1, 13):
-                records.append(
-                    {
-                        "company": company,
-                        "person": "N/A",
-                        "item": row["item"],
-                        "scenario": scenario,
-                        "month": pd.Timestamp(year=year, month=month, day=1),
-                        "budget": round(budget_for_year, 2),
-                        "expense": round(expense_for_year, 2),
-                    }
-                )
-
-    projected = pd.DataFrame.from_records(records)
-    return _normalize_expenses(projected)
