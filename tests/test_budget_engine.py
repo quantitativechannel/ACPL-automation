@@ -5,9 +5,11 @@ import pandas as pd
 from src.budget_engine import (
     BudgetWorkbook,
     allocate_expenses_to_companies,
+    build_travel_assumptions_from_people,
     default_template,
     export_dashboard_workbook,
     generate_forecast_table,
+    sync_trip_type_config,
 )
 
 
@@ -147,3 +149,79 @@ def test_generate_forecast_table_creates_month_columns() -> None:
     row = forecast.iloc[0]
     assert row["2026-01"] == 1000
     assert round(row["2027-01"], 2) == 1100
+
+
+def test_build_travel_assumptions_from_people_generates_annual_costs() -> None:
+    people = pd.DataFrame(
+        [
+            {"name": "A", "location": "SZ", "company": "ACPL", "base_salary": 1000, "type": "Consultant"},
+            {"name": "B", "location": "HK", "company": "ACPL", "base_salary": 1000, "type": "Consultant"},
+            {"name": "C", "location": "GZ", "company": "ACPLHK", "base_salary": 1000, "type": "Manager"},
+        ]
+    )
+    trip_config = pd.DataFrame(
+        [
+            {"type": "Consultant", "category": "International", "est_trips": 2, "cost_per_trip": 500},
+            {"type": "Manager", "category": "Short Dist", "est_trips": 3, "cost_per_trip": 200},
+        ]
+    )
+    allocation = pd.DataFrame(
+        [
+            {"category": "International", "expense_item": "Airfare -International", "allocation_pct": 80},
+            {"category": "International", "expense_item": "Meals", "allocation_pct": 20},
+            {"category": "Short Dist", "expense_item": "Airfare-Domestic", "allocation_pct": 100},
+        ]
+    )
+    master = pd.DataFrame(
+        [
+            {"code": "TRV-INT-AIR", "expense_item": "Airfare -International", "cashflow_item": "Operating Expense"},
+            {"code": "TRV-MEAL", "expense_item": "Meals", "cashflow_item": "Operating Expense"},
+            {"code": "TRV-DOM-AIR", "expense_item": "Airfare-Domestic", "cashflow_item": "Operating Expense"},
+        ]
+    )
+
+    result = build_travel_assumptions_from_people(
+        people_df=people,
+        trip_config_df=trip_config,
+        allocation_df=allocation,
+        master_config_df=master,
+        year=2026,
+    )
+
+    acpl = result[result["company"] == "ACPL"].set_index("expense_item")["annual_cost"]
+    assert acpl["Airfare -International"] == 1600
+    assert acpl["Meals"] == 400
+    acplhk = result[result["company"] == "ACPLHK"].set_index("expense_item")["annual_cost"]
+    assert acplhk["Airfare-Domestic"] == 600
+
+
+def test_sync_trip_type_config_builds_fixed_type_category_matrix() -> None:
+    people = pd.DataFrame(
+        [
+            {"name": "A", "location": "SZ", "company": "ACPL", "base_salary": 1000, "type": "Consultant"},
+            {"name": "B", "location": "HK", "company": "ACPL", "base_salary": 1000, "type": "Manager"},
+            {"name": "C", "location": "HK", "company": "ACPL", "base_salary": 1000, "type": "Consultant"},
+        ]
+    )
+    existing = pd.DataFrame(
+        [
+            {"type": "Consultant", "category": "International", "est_trips": 2, "cost_per_trip": 500},
+            {"type": "Manager", "category": "Short Dist", "est_trips": 3, "cost_per_trip": 200},
+            {"type": "Legacy", "category": "International", "est_trips": 9, "cost_per_trip": 900},
+        ]
+    )
+
+    result = sync_trip_type_config(people, existing)
+
+    assert len(result) == 8
+    assert result["type"].tolist()[:4] == ["Consultant"] * 4
+    assert result["category"].tolist()[:4] == ["Shenzhen/HK", "Short Dist", "Long Dist", "International"]
+    consultant_international = result[
+        (result["type"] == "Consultant") & (result["category"] == "International")
+    ].iloc[0]
+    assert consultant_international["est_trips"] == 2
+    assert consultant_international["cost_per_trip"] == 500
+    manager_shenzhen = result[(result["type"] == "Manager") & (result["category"] == "Shenzhen/HK")].iloc[0]
+    assert manager_shenzhen["est_trips"] == 0
+    assert manager_shenzhen["cost_per_trip"] == 0
+    assert "Legacy" not in result["type"].unique().tolist()

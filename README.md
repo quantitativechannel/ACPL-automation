@@ -11,7 +11,11 @@ This repository contains a Streamlit app and budgeting engine for ACPL budgeting
   - `quarterly`
   - `particular_month`
 - Supports expense assumption uploads (`code`, `expense_item`, `cashflow_item`) and auto-populates them across subsidiaries.
-- Adds a `People` tab to upload people assumptions with columns `person`, `location`, and `base_salary`.
+- Adds a `People` tab to upload people assumptions with columns `name`, `location`, `company`, `base_salary`, and `type`.
+- Adds robust travel configuration tables to:
+  - maintain estimated trip count and cost per trip by `type` and category
+  - allocate travel category costs into expense items by percentage
+- Derives annualized travel assumptions and lets users push them into subsidiary budgeting grids.
 - Builds:
   - company-level expense summary
   - consolidated summary across companies
@@ -40,9 +44,24 @@ This repository contains a Streamlit app and budgeting engine for ACPL budgeting
 
 ### People upload
 
-- `person`
+- `name`
 - `location`
+- `company`
 - `base_salary`
+- `type`
+
+### Trip configuration table
+
+- `type` (auto-loaded from the People table)
+- `category` (fixed values: Shenzhen/HK, Short Dist, Long Dist, International)
+- `est_trips`
+- `cost_per_trip`
+
+### Trip allocation configuration table
+
+- `category`
+- `expense_item`
+- `allocation_pct`
 
 ### Legacy `Expenses` sheet
 
