@@ -16,6 +16,7 @@ This repository contains a Streamlit app and budgeting engine for ACPL budgeting
   - maintain estimated trip count and cost per trip by `type` and category
   - allocate travel category costs into expense items by percentage
 - Derives annualized travel assumptions and lets users push them into subsidiary budgeting grids.
+- Adds a normalized SQLite data model for workbook-aligned planning dimensions (entities, account mapping, report lines, scenarios), driver assumptions, and monthly postings for downstream Budget/Actual/Flash/Cashflow reporting.
 - Builds:
   - company-level expense summary
   - consolidated summary across companies
