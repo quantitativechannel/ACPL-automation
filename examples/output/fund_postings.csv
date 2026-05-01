@@ -1,0 +1,4 @@
+scenario_id,entity_code,month,account_code,posting_type,revenue_type,source_module,reference_id,description,amount
+DEMO,旭智咨询,2026-01,FUND_REVENUE,revenue_recognition,JV_FUND,fund_demo,JV_FUND|DEMO|2026-01,JV fund management fee,600000.0
+DEMO,旭智私募,2026-01,FUND_REVENUE,revenue_recognition,XIHE_FUND,fund_demo,XIHE_FUND|DEMO|2026-01,XiHe fund management fee,240000.0
+DEMO,旭智私募,2026-01,CASH_RECEIPT_SERVICES,cash_receipt,ANNUAL_PREPAID,fund_demo,ANNUAL_PREPAID|DEMO|2026-01,Annual prepaid cash receipt,120000.0

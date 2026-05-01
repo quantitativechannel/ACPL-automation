@@ -1,0 +1,13 @@
+scenario_id,project_group,month,incentive_1_flag,incentive_2_flag,reimbursed_cost_ex_vat
+DEMO,Solar,2026-01,1,0,0.0
+DEMO,Solar,2026-02,1,0,0.0
+DEMO,Solar,2026-03,1,0,0.0
+DEMO,Solar,2026-04,1,0,0.0
+DEMO,Solar,2026-05,1,0,0.0
+DEMO,Solar,2026-06,1,0,0.0
+DEMO,Solar,2026-07,1,0,0.0
+DEMO,Solar,2026-08,1,0,0.0
+DEMO,Solar,2026-09,1,0,0.0
+DEMO,Solar,2026-10,1,0,0.0
+DEMO,Solar,2026-11,1,0,0.0
+DEMO,Solar,2026-12,1,0,1000.0

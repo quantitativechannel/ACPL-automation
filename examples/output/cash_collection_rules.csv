@@ -1,0 +1,4 @@
+revenue_type,collection_method,collection_months,settlement_month
+MAA_BASE,quarterly_prepaid,"1,4,7,10",
+MAA_INCENTIVE_1,annual_settlement,,
+MAA_INCENTIVE_2,full_cycle_settlement,,2030-12

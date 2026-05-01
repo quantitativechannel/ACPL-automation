@@ -1,0 +1,4 @@
+revenue_type,rate,vat_rate,cit_rate
+MAA_BASE,0.1,0.06,0.25
+MAA_INCENTIVE_1,0.01,0.06,0.25
+MAA_INCENTIVE_2,0.04,0.06,0.25

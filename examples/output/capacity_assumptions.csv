@@ -1,0 +1,13 @@
+scenario_id,project_group,month,new_capacity_w,addition_timing_factor,avg_equity_price_per_w
+DEMO,Solar,2026-01,100000,0.5,0.2
+DEMO,Solar,2026-02,100000,0.5,0.2
+DEMO,Solar,2026-03,100000,0.5,0.2
+DEMO,Solar,2026-04,100000,0.5,0.2
+DEMO,Solar,2026-05,100000,0.5,0.2
+DEMO,Solar,2026-06,100000,0.5,0.2
+DEMO,Solar,2026-07,100000,0.5,0.2
+DEMO,Solar,2026-08,100000,0.5,0.2
+DEMO,Solar,2026-09,100000,0.5,0.2
+DEMO,Solar,2026-10,100000,0.5,0.2
+DEMO,Solar,2026-11,100000,0.5,0.2
+DEMO,Solar,2026-12,100000,0.5,0.2
