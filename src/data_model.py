@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import datetime
+
+from src.db.connection import create_connection
 from typing import Any
 
 
 def connect_db(db_path: str = ":memory:") -> sqlite3.Connection:
     """Create a SQLite connection with foreign keys enabled."""
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    return create_connection(db_path)
 
 
 def create_schema(conn: sqlite3.Connection) -> None:
@@ -180,9 +179,129 @@ def create_schema(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_other_exp_assumptions_core
             ON other_exp_assumptions(scenario_id, entity_id, account_code);
+
+        CREATE TABLE IF NOT EXISTS income_revenue_policies (
+            policy_id INTEGER PRIMARY KEY,
+            policy_name TEXT UNIQUE NOT NULL,
+            revenue_type TEXT NOT NULL,
+            rate REAL NOT NULL DEFAULT 0,
+            vat_rate REAL NOT NULL DEFAULT 0,
+            cit_rate REAL NOT NULL DEFAULT 0,
+            active_flag INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS capacity_assumptions (
+            row_id INTEGER PRIMARY KEY,
+            scenario_id INTEGER NOT NULL,
+            project_group TEXT NOT NULL,
+            month TEXT NOT NULL,
+            new_capacity_w REAL NOT NULL DEFAULT 0,
+            addition_timing_factor REAL NOT NULL DEFAULT 0,
+            avg_equity_price_per_w REAL NOT NULL DEFAULT 0.2,
+            manual_project_count_override REAL,
+            manual_region_count_override REAL,
+            notes TEXT,
+            UNIQUE (scenario_id, project_group, month)
+        );
+
+        CREATE TABLE IF NOT EXISTS capacity_rollforward (
+            row_id INTEGER PRIMARY KEY,
+            scenario_id INTEGER NOT NULL,
+            project_group TEXT NOT NULL,
+            month TEXT NOT NULL,
+            new_capacity_w REAL NOT NULL DEFAULT 0,
+            month_end_capacity_w REAL NOT NULL DEFAULT 0,
+            weighted_avg_capacity_w REAL NOT NULL DEFAULT 0,
+            new_project_count INTEGER NOT NULL DEFAULT 0,
+            month_end_project_count INTEGER NOT NULL DEFAULT 0,
+            new_region_count INTEGER NOT NULL DEFAULT 0,
+            month_end_region_count INTEGER NOT NULL DEFAULT 0,
+            jv_equity_new_contribution REAL NOT NULL DEFAULT 0,
+            jv_equity_cumulative_contribution REAL NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS maa_assumptions (
+            row_id INTEGER PRIMARY KEY,
+            scenario_id INTEGER NOT NULL,
+            project_group TEXT NOT NULL,
+            month TEXT NOT NULL,
+            incentive_1_flag INTEGER NOT NULL DEFAULT 0,
+            incentive_2_flag INTEGER NOT NULL DEFAULT 0,
+            reimbursed_cost_ex_vat REAL NOT NULL DEFAULT 0,
+            notes TEXT,
+            UNIQUE (scenario_id, project_group, month)
+        );
+
+        CREATE TABLE IF NOT EXISTS revenue_allocation_rules (
+            rule_id INTEGER PRIMARY KEY,
+            revenue_type TEXT NOT NULL,
+            recipient_entity_code TEXT NOT NULL,
+            allocation_pct REAL NOT NULL DEFAULT 0,
+            haircut_pct REAL NOT NULL DEFAULT 0,
+            active_flag INTEGER NOT NULL DEFAULT 1,
+            UNIQUE (revenue_type, recipient_entity_code)
+        );
+
+        CREATE TABLE IF NOT EXISTS cash_collection_rules (
+            rule_id INTEGER PRIMARY KEY,
+            revenue_type TEXT NOT NULL,
+            collection_method TEXT NOT NULL,
+            collection_months TEXT,
+            settlement_month TEXT,
+            active_flag INTEGER NOT NULL DEFAULT 1,
+            UNIQUE (revenue_type, collection_method, collection_months, settlement_month)
+        );
+
+        CREATE TABLE IF NOT EXISTS fund_assumptions (
+            row_id INTEGER PRIMARY KEY,
+            scenario_id INTEGER NOT NULL,
+            fund_name TEXT NOT NULL,
+            month TEXT NOT NULL,
+            initial_fund_equity_contribution REAL NOT NULL DEFAULT 0,
+            fixed_expense_contribution REAL NOT NULL DEFAULT 0,
+            gp_commitment_pct REAL,
+            lp_commitment_pct REAL,
+            management_fee_rate REAL NOT NULL DEFAULT 0,
+            vat_rate REAL NOT NULL DEFAULT 0,
+            cit_rate REAL NOT NULL DEFAULT 0,
+            incentive_flag INTEGER NOT NULL DEFAULT 0,
+            notes TEXT,
+            UNIQUE (scenario_id, fund_name, month)
+        );
+
+        CREATE TABLE IF NOT EXISTS fund_rollforward (
+            row_id INTEGER PRIMARY KEY,
+            scenario_id INTEGER NOT NULL,
+            fund_name TEXT NOT NULL,
+            month TEXT NOT NULL,
+            fund_equity_new_contribution REAL NOT NULL DEFAULT 0,
+            fund_equity_cumulative_contribution REAL NOT NULL DEFAULT 0,
+            fund_expense_new_contribution REAL NOT NULL DEFAULT 0,
+            fund_expense_cumulative_contribution REAL NOT NULL DEFAULT 0,
+            gp_new_contribution REAL NOT NULL DEFAULT 0,
+            gp_cumulative_contribution REAL NOT NULL DEFAULT 0,
+            lp_new_contribution REAL NOT NULL DEFAULT 0,
+            lp_cumulative_contribution REAL NOT NULL DEFAULT 0,
+            base_management_fee REAL NOT NULL DEFAULT 0,
+            incentive_management_fee REAL NOT NULL DEFAULT 0
+        );
         """
     )
+    _add_column_if_missing(conn, "monthly_postings", "posting_type", "TEXT")
+    _add_column_if_missing(conn, "monthly_postings", "revenue_type", "TEXT")
+    _add_column_if_missing(conn, "monthly_postings", "counterparty", "TEXT")
     conn.commit()
+
+
+def _add_column_if_missing(
+    conn: sqlite3.Connection,
+    table: str,
+    column: str,
+    column_type: str,
+) -> None:
+    columns = {row[1] for row in conn.execute(f"PRAGMA table_info('{table}')").fetchall()}
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
 
 
 def _insert_row(conn: sqlite3.Connection, table: str, payload: dict[str, Any]) -> int:

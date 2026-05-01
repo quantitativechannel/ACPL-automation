@@ -66,6 +66,20 @@ def test_group_budget_report_aggregates_across_entities() -> None:
     assert expense["month_amount"] == -70.0
 
 
+def test_group_budget_report_returns_zero_lines_when_no_postings() -> None:
+    report = build_group_budget_report(
+        pd.DataFrame(columns=["scenario_id", "entity_id", "month", "account_code", "posting_type", "amount"]),
+        _account_map(),
+        _report_lines(),
+        "EMPTY",
+        "2026-02",
+    )
+
+    assert list(report["line_name"]) == ["Revenue", "Operating Expense", "Other Income"]
+    assert report["month_amount"].sum() == 0.0
+    assert report["ytd_amount"].sum() == 0.0
+
+
 def test_monthly_budget_matrix_shape() -> None:
     matrix = build_monthly_budget_matrix(
         _postings(), _account_map(), scenario_id="BUD2026", start_month="2026-01", end_month="2026-03", entity_id="E1"

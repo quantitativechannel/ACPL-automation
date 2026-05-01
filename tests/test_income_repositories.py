@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pandas as pd
 
 from src.data_model import connect_db, create_schema
@@ -19,14 +17,9 @@ from src.db.income_repositories import (
 )
 
 
-MIGRATION_004 = Path("db/migrations/004_income_schema.sql")
-
-
 def _setup_income_conn():
     conn = connect_db()
     create_schema(conn)
-    conn.executescript(MIGRATION_004.read_text(encoding="utf-8"))
-    conn.commit()
     return conn
 
 

@@ -68,6 +68,12 @@ def _line_mapping(account_map_df: pd.DataFrame) -> pd.DataFrame:
     return mapping
 
 
+def _period_years(series: pd.Series) -> pd.Series:
+    if series.empty:
+        return pd.Series(dtype="int64", index=series.index)
+    return pd.Series(pd.PeriodIndex(series, freq="M").year, index=series.index)
+
+
 def _enrich_lines(report: pd.DataFrame, cashflow_lines_df: pd.DataFrame | None) -> pd.DataFrame:
     if cashflow_lines_df is None or cashflow_lines_df.empty:
         return report
@@ -105,7 +111,7 @@ def build_cashflow_report(
     mapped = postings.merge(_line_mapping(account_map_df), on="account_code", how="left")
     mapped["cashflow_line_name"] = mapped["cashflow_line_name"].fillna(mapped["posting_type"])
 
-    ytd_source = mapped[(mapped["month"] <= selected_period) & (mapped["month"].dt.year == selected_period.year)].copy()
+    ytd_source = mapped[(mapped["month"] <= selected_period) & (_period_years(mapped["month"]) == selected_period.year)].copy()
     ytd = ytd_source.groupby([entity_col, "cashflow_line_name"], as_index=False)["amount"].sum().rename(
         columns={"amount": "ytd_amount"}
     )

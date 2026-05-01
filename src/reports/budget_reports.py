@@ -52,6 +52,12 @@ def _apply_sign(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _period_years(series: pd.Series) -> pd.Series:
+    if series.empty:
+        return pd.Series(dtype="int64", index=series.index)
+    return pd.Series(pd.PeriodIndex(series, freq="M").year, index=series.index)
+
+
 def _build_budget_report(postings_df: pd.DataFrame, account_map_df: pd.DataFrame, report_lines_df: pd.DataFrame, scenario_id: str, selected_month: str, entity_id: str | None = None) -> pd.DataFrame:
     selected_period = pd.Period(selected_month, freq="M")
 
@@ -65,13 +71,13 @@ def _build_budget_report(postings_df: pd.DataFrame, account_map_df: pd.DataFrame
     mapped = mapped[mapped["report_line_name"].notna()].copy()
 
     in_month = mapped[mapped["month"] == selected_period].groupby("report_line_name", as_index=False)["amount"].sum().rename(columns={"amount": "month_amount"})
-    ytd = mapped[(mapped["month"] <= selected_period) & (mapped["month"].dt.year == selected_period.year)].groupby("report_line_name", as_index=False)["amount"].sum().rename(columns={"amount": "ytd_amount"})
+    ytd = mapped[(mapped["month"] <= selected_period) & (_period_years(mapped["month"]) == selected_period.year)].groupby("report_line_name", as_index=False)["amount"].sum().rename(columns={"amount": "ytd_amount"})
 
     lines = _normalize_report_lines(report_lines_df)
     merged = lines.merge(in_month, left_on="line_name", right_on="report_line_name", how="left")
     merged = merged.merge(ytd, left_on="line_name", right_on="report_line_name", how="left", suffixes=("", "_ytd"))
-    merged["month_amount"] = merged["month_amount"].fillna(0.0)
-    merged["ytd_amount"] = merged["ytd_amount"].fillna(0.0)
+    merged["month_amount"] = pd.to_numeric(merged["month_amount"], errors="coerce").fillna(0.0)
+    merged["ytd_amount"] = pd.to_numeric(merged["ytd_amount"], errors="coerce").fillna(0.0)
 
     merged = merged.sort_values(["display_order", "line_code"], na_position="last").reset_index(drop=True)
     merged = _apply_sign(merged)

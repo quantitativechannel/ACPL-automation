@@ -32,12 +32,18 @@ def _entity_filter(df: pd.DataFrame, entity_code: str | None) -> pd.DataFrame:
     return df[df["entity_code"] == entity_code].copy()
 
 
+def _period_years(series: pd.Series) -> pd.Series:
+    if series.empty:
+        return pd.Series(dtype="int64", index=series.index)
+    return pd.Series(pd.PeriodIndex(series, freq="M").year, index=series.index)
+
+
 def _add_ytd(frame: pd.DataFrame, selected_period: pd.Period, amount_col: str) -> pd.DataFrame:
     if frame.empty:
         return frame
 
     ytd_source = frame[frame["month"] <= selected_period].copy()
-    ytd_source = ytd_source[ytd_source["month"].dt.year == selected_period.year]
+    ytd_source = ytd_source[_period_years(ytd_source["month"]) == selected_period.year]
     ytd = (
         ytd_source.groupby(["entity_code", "revenue_type"], as_index=False)[amount_col]
         .sum()
