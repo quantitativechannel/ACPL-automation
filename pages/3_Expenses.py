@@ -6,6 +6,7 @@ import streamlit as st
 from src.data_model import connect_db, create_schema
 from src.ui.components import render_hero
 from src.ui.navigation import render_app_sidebar
+from src.ui.scenario_controls import render_scenario_selector
 from src.ui.table_editor import render_editable_table
 from src.ui.theme import apply_theme
 
@@ -23,7 +24,8 @@ render_hero(
     "Maintain recurring and one-off expense assumptions by scenario, entity, account, vendor, and timing basis.",
 )
 
-scenario_id = st.number_input("Scenario ID", min_value=1, value=1)
+scenario_id, scenario_name = render_scenario_selector(conn, key="expense_scenario")
+st.caption(f"Editing assumptions for {scenario_name}. Scenario IDs are controlled by the scenario manager.")
 tab_prof, tab_other, tab_medical, tab_manual = st.tabs(
     ["Professional Fees", "Other Expenses", "Medical Benefits", "Manual Overrides"]
 )
@@ -38,6 +40,7 @@ with tab_prof:
         key="expenses_prof_fee",
         subtitle="Vendors, fee names, currency, basis type, amount, and active dates.",
         default_values={"scenario_id": scenario_id},
+        hidden_columns=["scenario_id"],
     )
 
 with tab_other:
@@ -50,6 +53,7 @@ with tab_other:
         key="expenses_other_exp",
         subtitle="Add or maintain operating expenses that are not professional fee or people driven.",
         default_values={"scenario_id": scenario_id},
+        hidden_columns=["scenario_id"],
     )
 
 with tab_medical:
@@ -62,6 +66,7 @@ with tab_medical:
         key="expenses_medical",
         subtitle="Medical benefit cost by entity, type, and scenario.",
         default_values={"scenario_id": scenario_id},
+        hidden_columns=["scenario_id"],
     )
 
 with tab_manual:
@@ -74,4 +79,5 @@ with tab_manual:
         key="expenses_manual",
         subtitle="One-off cashflow adjustments that should flow into treasury and forecast outputs.",
         default_values={"scenario_id": scenario_id},
+        hidden_columns=["scenario_id"],
     )

@@ -19,6 +19,7 @@ SETUP_IMPORT_TABLES = [
     "fund_assumptions",
     "prof_fee_assumptions",
     "other_exp_assumptions",
+    "medical_assumptions",
     "employees",
     "travel_policy",
     "travel_allocation",
@@ -28,6 +29,20 @@ SETUP_IMPORT_TABLES = [
 
 def table_columns(conn: sqlite3.Connection, table: str) -> list[str]:
     return [row[1] for row in conn.execute(f"PRAGMA table_info('{table}')").fetchall()]
+
+
+def generated_primary_key_columns(conn: sqlite3.Connection, table: str) -> list[str]:
+    pk_columns: list[tuple[int, str, str]] = []
+    for row in conn.execute(f"PRAGMA table_info('{table}')").fetchall():
+        _, name, column_type, _, _, primary_key = row[:6]
+        if primary_key:
+            pk_columns.append((primary_key, name, str(column_type).upper()))
+
+    if len(pk_columns) != 1:
+        return []
+
+    _, name, column_type = pk_columns[0]
+    return [name] if "INT" in column_type else []
 
 
 def required_columns(conn: sqlite3.Connection, table: str) -> list[str]:
@@ -95,5 +110,7 @@ def build_template_workbook(conn: sqlite3.Connection) -> bytes:
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
         for table in SETUP_IMPORT_TABLES:
-            pd.DataFrame(columns=table_columns(conn, table)).to_excel(writer, index=False, sheet_name=table[:31])
+            generated = set(generated_primary_key_columns(conn, table))
+            columns = [col for col in table_columns(conn, table) if col not in generated]
+            pd.DataFrame(columns=columns).to_excel(writer, index=False, sheet_name=table[:31])
     return buffer.getvalue()

@@ -69,7 +69,15 @@ def _insert_postings(conn: sqlite3.Connection, run_id: int, postings: pd.DataFra
     for col in _POSTING_COLUMNS:
         if col not in payload.columns:
             payload[col] = pd.NA
+
+    if "entity_id" in payload.columns and "entity_code" in payload.columns:
+        entity_rows = conn.execute("SELECT entity_code, entity_id FROM entities").fetchall()
+        entity_lookup = {row[0]: row[1] for row in entity_rows}
+        missing_entity = payload["entity_id"].isna()
+        payload.loc[missing_entity, "entity_id"] = payload.loc[missing_entity, "entity_code"].map(entity_lookup)
+
     payload["run_id"] = run_id
+    payload = payload.where(pd.notna(payload), None)
 
     insert_cols = [col for col in (_POSTING_COLUMNS + ["run_id"]) if col in existing_cols]
     placeholders = ", ".join(["?"] * len(insert_cols))

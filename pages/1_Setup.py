@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
 
@@ -12,6 +14,7 @@ from src.services.setup_import import (
 )
 from src.ui.components import render_hero, render_section_header
 from src.ui.navigation import render_app_sidebar
+from src.ui.scenario_controls import render_scenario_admin
 from src.ui.table_editor import render_editable_table
 from src.ui.theme import apply_theme
 
@@ -29,32 +32,23 @@ render_hero(
     "Maintain the static structure used by every forecast: entities, scenarios, chart of accounts, and report lines.",
 )
 
-tab_entities, tab_accounts, tab_reports, tab_import = st.tabs(
-    ["Entities & Scenarios", "Account Mapping", "Report Lines", "Bulk Import"]
+tab_entities, tab_scenarios, tab_accounts, tab_reports, tab_import = st.tabs(
+    ["Entities", "Scenarios", "Account Mapping", "Report Lines", "Bulk Import"]
 )
 
 with tab_entities:
-    col1, col2 = st.columns(2)
-    with col1:
-        entities = pd.read_sql_query("SELECT * FROM entities LIMIT 500", conn)
-        render_editable_table(
-            conn,
-            title="Entities",
-            table="entities",
-            df=entities,
-            key="setup_entities",
-            subtitle="Companies, country, base currency, and active status.",
-        )
-    with col2:
-        scenarios = pd.read_sql_query("SELECT * FROM scenarios LIMIT 500", conn)
-        render_editable_table(
-            conn,
-            title="Scenarios",
-            table="scenarios",
-            df=scenarios,
-            key="setup_scenarios",
-            subtitle="Budget, forecast, flash, and sensitivity scenarios.",
-        )
+    entities = pd.read_sql_query("SELECT * FROM entities LIMIT 500", conn)
+    render_editable_table(
+        conn,
+        title="Entities",
+        table="entities",
+        df=entities,
+        key="setup_entities",
+        subtitle="Companies, country, base currency, and active status.",
+    )
+
+with tab_scenarios:
+    render_scenario_admin(conn)
 
 with tab_accounts:
     account_map = pd.read_sql_query("SELECT * FROM account_map LIMIT 1000", conn)
@@ -95,6 +89,14 @@ Upload a multi-sheet `.xlsx` where sheet names match the supported table names, 
         file_name="acpl_setup_template.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+    mock_config = Path("examples/acpl_master_config_mock.xlsx")
+    if mock_config.exists():
+        st.download_button(
+            "Download ACPL mock master config",
+            mock_config.read_bytes(),
+            file_name="acpl_master_config_mock.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 
     upload = st.file_uploader("Upload setup workbook (.xlsx) or single table (.csv)", type=["csv", "xlsx"])
     if upload is not None:

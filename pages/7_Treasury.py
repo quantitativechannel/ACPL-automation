@@ -7,6 +7,7 @@ from src.data_model import connect_db, create_schema
 from src.drivers.treasury_driver import build_treasury_rollforward
 from src.ui.components import render_dataframe_card, render_hero
 from src.ui.navigation import render_app_sidebar
+from src.ui.scenario_controls import render_scenario_selector
 from src.ui.table_editor import render_editable_table
 from src.ui.theme import apply_theme
 
@@ -24,7 +25,8 @@ render_hero(
     "Maintain manual cashflow items and generate a cash rollforward view.",
 )
 
-scenario_id = st.number_input("Scenario ID", min_value=1, value=1)
+scenario_id, scenario_name = render_scenario_selector(conn, key="treasury_scenario")
+st.caption(f"Editing treasury inputs for {scenario_name}. Scenario IDs are controlled by the scenario manager.")
 tab_manual, tab_rollforward = st.tabs(["Manual Cashflow", "Rollforward"])
 
 with tab_manual:
@@ -37,6 +39,7 @@ with tab_manual:
         key="treasury_manual_cashflow",
         subtitle="Add one-off cash items by entity, month, and scenario.",
         default_values={"scenario_id": scenario_id},
+        hidden_columns=["scenario_id"],
     )
 
 with tab_rollforward:

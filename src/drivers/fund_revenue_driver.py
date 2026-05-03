@@ -78,6 +78,11 @@ def build_jv_fund_rollforward(
     )
 
     merged = capacity.merge(assumptions, on=["scenario_id", "month"], how="left")
+    if "addition_timing_factor" not in merged.columns:
+        if "addition_timing_factor_y" in merged.columns:
+            merged["addition_timing_factor"] = merged["addition_timing_factor_y"]
+        elif "addition_timing_factor_x" in merged.columns:
+            merged["addition_timing_factor"] = merged["addition_timing_factor_x"]
     merged["fund_name"] = merged["fund_name"].fillna(JV_FUND_NAME)
     merged["jv_equity_new_contribution"] = merged["jv_equity_new_contribution"].fillna(0.0).astype(float)
 

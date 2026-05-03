@@ -8,6 +8,7 @@ from src.db import income_repositories as repo
 from src.reports.income_reports import build_income_statement_revenue_report
 from src.ui.components import render_dataframe_card, render_hero
 from src.ui.navigation import render_app_sidebar
+from src.ui.scenario_controls import render_scenario_selector
 from src.ui.table_editor import render_editable_table
 from src.ui.theme import apply_theme
 
@@ -26,7 +27,8 @@ render_hero(
     "Input capacity, MAA revenue, fund revenue, allocation, and cash collection assumptions.",
 )
 
-scenario_id = st.number_input("Scenario ID", min_value=1, value=1)
+scenario_id, scenario_name = render_scenario_selector(conn, key="income_scenario")
+st.caption(f"Editing assumptions for {scenario_name}. Scenario IDs are controlled by the scenario manager.")
 tab_capacity, tab_maa, tab_fund, tab_rules, tab_preview = st.tabs(
     ["Capacity", "MAA Revenue", "Fund Revenue", "Policies & Rules", "Preview"]
 )
@@ -40,6 +42,7 @@ with tab_capacity:
         key="income_capacity",
         subtitle="Monthly capacity additions, timing factor, equity price, and manual count overrides.",
         default_values={"scenario_id": scenario_id},
+        hidden_columns=["scenario_id"],
     )
 
 with tab_maa:
@@ -51,6 +54,7 @@ with tab_maa:
         key="income_maa",
         subtitle="Monthly MAA incentive flags and reimbursed costs for each project group.",
         default_values={"scenario_id": scenario_id},
+        hidden_columns=["scenario_id"],
     )
 
 with tab_fund:
@@ -62,6 +66,7 @@ with tab_fund:
         key="income_fund",
         subtitle="JV fund contributions, fee rates, tax rates, and incentive flags.",
         default_values={"scenario_id": scenario_id},
+        hidden_columns=["scenario_id"],
     )
 
 with tab_rules:

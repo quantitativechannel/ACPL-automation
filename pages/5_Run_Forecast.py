@@ -8,6 +8,7 @@ from src.services.input_loader import load_forecast_inputs_from_db
 from src.services.run_forecast import run_forecast_and_persist
 from src.ui.components import render_dataframe_card, render_hero, render_metric_card
 from src.ui.navigation import render_app_sidebar
+from src.ui.scenario_controls import render_scenario_selector
 from src.ui.theme import apply_theme
 
 st.set_page_config(page_title="Run Forecast", layout="wide")
@@ -27,7 +28,8 @@ render_hero(
 left, right = st.columns([0.9, 1.25])
 with left:
     st.markdown("### Run Settings")
-    scenario_id = st.number_input("Scenario ID", min_value=1, value=1)
+    scenario_id, scenario_name = render_scenario_selector(conn, key="run_scenario")
+    st.caption(f"Running saved assumptions for {scenario_name}.")
     start_month = st.text_input("Start month (YYYY-MM)", value="2026-01")
     end_month = st.text_input("End month (YYYY-MM)", value="2026-12")
     notes = st.text_area("Run notes", placeholder="Optional context for this run")

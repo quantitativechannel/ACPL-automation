@@ -8,6 +8,7 @@ from src.drivers.personnel_driver import build_monthly_headcount
 from src.drivers.travel_driver import build_travel_postings
 from src.ui.components import render_dataframe_card, render_hero
 from src.ui.navigation import render_app_sidebar
+from src.ui.scenario_controls import render_scenario_selector
 from src.ui.table_editor import render_editable_table
 from src.ui.theme import apply_theme
 
@@ -50,7 +51,8 @@ with tab_allocation:
     )
 
 with tab_preview:
-    scenario_id = st.number_input("Scenario ID", min_value=1, value=1)
+    scenario_id, scenario_name = render_scenario_selector(conn, key="travel_scenario")
+    st.caption(f"Previewing travel costs for {scenario_name}. Travel policy is global configuration.")
     start_month = st.text_input("Start month (YYYY-MM)", value="2026-01")
     end_month = st.text_input("End month (YYYY-MM)", value="2026-12")
     if st.button("Preview travel postings"):

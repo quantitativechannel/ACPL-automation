@@ -7,6 +7,7 @@ from src.data_model import connect_db, create_schema
 from src.drivers.personnel_driver import build_monthly_headcount, build_personnel_postings
 from src.ui.components import render_dataframe_card, render_hero
 from src.ui.navigation import render_app_sidebar
+from src.ui.scenario_controls import render_scenario_selector
 from src.ui.table_editor import render_editable_table
 from src.ui.theme import apply_theme
 
@@ -24,7 +25,8 @@ render_hero(
     "Maintain employee master data and salary assumptions. Travel configuration has its own page under Configuration.",
 )
 
-scenario_id = st.number_input("Scenario ID for preview", min_value=1, value=1)
+scenario_id, scenario_name = render_scenario_selector(conn, key="people_scenario", label="Scenario for preview")
+st.caption(f"Previewing people costs for {scenario_name}. Employee master data is maintained once and applied to the selected scenario.")
 tab_employees, tab_preview = st.tabs(["Employee Records", "Personnel Preview"])
 
 with tab_employees:
